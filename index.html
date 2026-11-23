@@ -23,7 +23,7 @@
   .ticker {
     display: flex;
     width: max-content;
-    animation: scroll 65s linear infinite;
+    animation: scroll 48s linear infinite;
   }
   .ticker:hover { animation-play-state: paused; }
   .item {
@@ -64,7 +64,7 @@
 
 <script>
   const WORKER_URL = 'https://broken-credit-c0e4metar-proxy.wfwhy925kv.workers.dev/';
-  const STATIONS = ['CYKF', 'CYYZ', 'CYUL', 'CYVR', 'KCXO', 'KIAH', 'KLAX', 'KMIA', 'KMCO', 'KJFK', 'KORD', 'KSEA']; 
+  const STATIONS = ['CYKF', 'CYYZ', 'CYUL', 'CYVR', 'CYZF', 'KCXO', 'KIAH', 'KLAX', 'KMIA', 'KMCO', 'KJFK', 'KORD', 'KSEA']; 
   const REFRESH_MINUTES = 15;
 
   function getCategoryFromRaw(raw) {
