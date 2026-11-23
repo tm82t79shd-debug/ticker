@@ -63,23 +63,63 @@
 </div>
 
 <script>
-  const WORKER_URL = 'https://broken-credit-c0e4metar-proxy.wfwhy925kv.workers.dev/';
+  const WORKER_URL = 'https://workers.dev';
   const STATIONS = ['CYKF', 'CYYZ', 'CYHM', 'CYXU', 'KCXO', 'KIAH']; 
   const REFRESH_MINUTES = 15;
+
+  function getCategoryFromRaw(raw) {
+    let ceil = 99999;
+    const cloudMatches = raw.match(/\b(BKN|OVC|VV)(\d{3})\b/g);
+    if (cloudMatches) {
+      for (const layer of cloudMatches) {
+        const height = parseInt(layer.replace(/^(BKN|OVC|VV)/, ''), 10) * 100;
+        if (height < ceil) ceil = height;
+      }
+    }
+
+    let vis = 10;
+    const smMatch = raw.match(/\b(P)?(\d+\s+)?(\d+\/\d+|\d+)SM\b/);
+    if (smMatch) {
+      if (smMatch[1] === 'P') {
+        vis = 10;
+      } else {
+        const whole = smMatch[2] ? parseInt(smMatch[2].trim(), 10) : 0;
+        const part = smMatch[3].includes('/') 
+          ? smMatch[3].split('/').reduce((n, d) => n / d) 
+          : parseFloat(smMatch[3]);
+        vis = whole + part;
+      }
+    } else if (/\b9999\b/.test(raw) || /\bCAVOK\b/.test(raw)) {
+      vis = 10;
+    } else {
+      const mMatch = raw.match(/\s(\d{4})\s/);
+      if (mMatch) vis = parseInt(mMatch[1], 10) / 1609.34;
+    }
+
+    if (ceil < 500 || vis < 1) return 'LIFR';
+    if (ceil < 1000 || vis < 3) return 'IFR';
+    if (ceil <= 3000 || vis <= 5) return 'MVFR';
+    return 'VFR';
+  }
 
   async function fetchMetars() {
     try {
       const res = await fetch(WORKER_URL);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const text = await res.text();
 
-      if (!Array.isArray(data) || data.length === 0) throw new Error('Empty METAR list');
+      const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l.length > 10 && !l.startsWith('<'));
+      if (!lines.length) throw new Error('No METAR lines returned');
 
-      data.sort((a, b) => STATIONS.indexOf(a.icaoId) - STATIONS.indexOf(b.icaoId));
+      lines.sort((a, b) => {
+        const idA = STATIONS.findIndex(s => a.includes(s));
+        const idB = STATIONS.findIndex(s => b.includes(s));
+        return (idA === -1 ? 99 : idA) - (idB === -1 ? 99 : idB);
+      });
 
-      const itemsHtml = data.map(m => {
-        const cat = m.fltCat || 'VFR';
-        return `<div class="item"><span class="flt-cat ${cat}">${cat}</span><span>${m.rawOb}</span></div>`;
+      const itemsHtml = lines.map(raw => {
+        const cat = getCategoryFromRaw(raw);
+        return `<div class="item"><span class="flt-cat ${cat}">${cat}</span><span>${raw}</span></div>`;
       }).join('');
 
       document.getElementById('ticker').innerHTML = itemsHtml + itemsHtml;
