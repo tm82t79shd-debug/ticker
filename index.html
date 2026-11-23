@@ -58,42 +58,58 @@
 
 <div class="ticker-wrap">
   <div class="ticker" id="ticker">
-    <div class="item">Loading live METARs...</div>
+    <div class="item">Connecting to NOAA Aviation Weather...</div>
   </div>
 </div>
 
 <script>
-  const API_KEY = '60e3c65da3574a52857b0d025a66fe17';
   const STATIONS = ['CYKF', 'CYYZ', 'CYHM', 'CYXU', 'KCXO', 'KIAH']; 
   const REFRESH_MINUTES = 15;
 
-  async function fetchMetars() {
-    try {
-      const url = `https://checkwx.com{STATIONS.join(',')}/decoded?x-api-key=${API_KEY}`;
-      const res = await fetch(url);
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-
-      if (!json.data || json.data.length === 0) throw new Error('No METAR data returned');
-
-      // Keep exact requested order
-      json.data.sort((a, b) => STATIONS.indexOf(a.icao) - STATIONS.indexOf(b.icao));
-
-      const itemsHtml = json.data.map(m => {
-        const cat = m.flight_category || 'VFR';
-        return `<div class="item"><span class="flt-cat ${cat}">${cat}</span><span>${m.raw_text}</span></div>`;
-      }).join('');
-
-      document.getElementById('ticker').innerHTML = itemsHtml + itemsHtml;
-    } catch (err) {
+  function renderMetars(data) {
+    if (!Array.isArray(data) || data.length === 0) {
       document.getElementById('ticker').innerHTML = 
-        `<div class="item">Error loading METARs: ${err.message}</div>`;
+        `<div class="item">No METARs returned. Retrying...</div>`;
+      return;
     }
+
+    data.sort((a, b) => STATIONS.indexOf(a.icaoId) - STATIONS.indexOf(b.icaoId));
+
+    const itemsHtml = data.map(m => {
+      const cat = m.fltCat || 'VFR';
+      return `<div class="item"><span class="flt-cat ${cat}">${cat}</span><span>${m.rawOb}</span></div>`;
+    }).join('');
+
+    document.getElementById('ticker').innerHTML = itemsHtml + itemsHtml;
   }
 
-  fetchMetars();
-  setInterval(fetchMetars, REFRESH_MINUTES * 60 * 1000);
+  window.handleAllOrigins = function(response) {
+    try {
+      const data = JSON.parse(response.contents);
+      renderMetars(data);
+    } catch (e) {
+      document.getElementById('ticker').innerHTML = 
+        `<div class="item">Parse error: ${e.message}</div>`;
+    }
+  };
+
+  function loadViaJsonp() {
+    const oldScript = document.getElementById('jsonp-metar');
+    if (oldScript) oldScript.remove();
+
+    const awUrl = `https://aviationweather.gov{STATIONS.join(',')}&format=json&_=${Date.now()}`;
+    const script = document.createElement('script');
+    script.id = 'jsonp-metar';
+    script.src = `https://allorigins.win{encodeURIComponent(awUrl)}&callback=handleAllOrigins`;
+    script.onerror = () => {
+      document.getElementById('ticker').innerHTML = 
+        `<div class="item">Weather relay unreachable. Retrying in ${REFRESH_MINUTES}m...</div>`;
+    };
+    document.body.appendChild(script);
+  }
+
+  loadViaJsonp();
+  setInterval(loadViaJsonp, REFRESH_MINUTES * 60 * 1000);
 </script>
 </body>
 </html>
