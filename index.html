@@ -23,7 +23,7 @@
   .ticker {
     display: flex;
     width: max-content;
-    animation: scroll 36s linear infinite;
+    animation: scroll 60s linear infinite;
   }
   .ticker:hover { animation-play-state: paused; }
   .item {
@@ -64,10 +64,11 @@
 
 <script>
   const WORKER_URL = 'https://workers.dev';
-  const STATIONS = ['CYKF', 'CYYZ', 'CYHM', 'CYXU', 'KCXO', 'KIAH']; 
+  const STATIONS = ['CYKF', 'CYYZ', 'CYUL', 'CYVR', 'CYZF', 'KCXO', 'KIAH', 'KLAX', 'KJFK', 'KMIA', 'KMCO']; 
   const REFRESH_MINUTES = 15;
 
   function getCategoryFromRaw(raw) {
+    // 1. Parse Ceiling (lowest BKN, OVC, or VV layer)
     let ceil = 99999;
     const cloudMatches = raw.match(/\b(BKN|OVC|VV)(\d{3})\b/g);
     if (cloudMatches) {
@@ -77,16 +78,18 @@
       }
     }
 
+    // 2. Parse Visibility (handles P6SM, 1 1/2SM, 1/2SM, 10SM, 9999, CAVOK)
     let vis = 10;
-    const smMatch = raw.match(/\b(P)?(\d+\s+)?(\d+\/\d+|\d+)SM\b/);
+    const smMatch = raw.match(/\b(P)?(?:(\d+)\s+)?(\d+\/\d+|\d+)SM\b/);
     if (smMatch) {
       if (smMatch[1] === 'P') {
         vis = 10;
       } else {
-        const whole = smMatch[2] ? parseInt(smMatch[2].trim(), 10) : 0;
-        const part = smMatch[3].includes('/') 
-          ? smMatch[3].split('/').reduce((n, d) => n / d) 
-          : parseFloat(smMatch[3]);
+        const whole = smMatch[2] ? parseInt(smMatch[2], 10) : 0;
+        const partStr = smMatch[3];
+        const part = partStr.includes('/')
+          ? Number(partStr.split('/')[0]) / Number(partStr.split('/')[1])
+          : parseFloat(partStr);
         vis = whole + part;
       }
     } else if (/\b9999\b/.test(raw) || /\bCAVOK\b/.test(raw)) {
@@ -104,7 +107,7 @@
 
   async function fetchMetars() {
     try {
-      const res = await fetch(WORKER_URL);
+      const res = await fetch(`${WORKER_URL}?t=${Date.now()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
 
@@ -112,8 +115,8 @@
       if (!lines.length) throw new Error('No METAR lines returned');
 
       lines.sort((a, b) => {
-        const idA = STATIONS.findIndex(s => a.includes(s));
-        const idB = STATIONS.findIndex(s => b.includes(s));
+        const idA = STATIONS.findIndex(s => a.startsWith(s));
+        const idB = STATIONS.findIndex(s => b.startsWith(s));
         return (idA === -1 ? 99 : idA) - (idB === -1 ? 99 : idB);
       });
 
