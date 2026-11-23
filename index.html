@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #000000;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #e5e5e5;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    height: 100vh;
+  }
+  .ticker-wrap {
+    width: 100%;
+    overflow: hidden;
+    background: transparent;
+    border-bottom: 1px solid #1f1f1f;
+    padding: 6px 0;
+  }
+  .ticker {
+    display: flex;
+    width: max-content;
+    animation: scroll 45s linear infinite;
+  }
+  .ticker:hover { animation-play-state: paused; }
+  .item {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    padding-right: 3.5rem;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    color: #d4d4d4;
+  }
+  .flt-cat {
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-right: 8px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  .VFR  { background: rgba(34, 197, 94, 0.2);  color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.4); }
+  .MVFR { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.4); }
+  .IFR  { background: rgba(239, 68, 68, 0.2);  color: #f87171; border: 1px solid rgba(248, 113, 113, 0.4); }
+  .LIFR { background: rgba(217, 70, 239, 0.2); color: #e879f9; border: 1px solid rgba(232, 121, 249, 0.4); }
+  
+  @keyframes scroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+
+<div class="ticker-wrap">
+  <div class="ticker" id="ticker">
+    <div class="item">Fetching METARs for CYKF, CYYZ, CYHM, CYXU, KCXO, KIAH...</div>
+  </div>
+</div>
+
+<script>
+  const STATIONS = ['CYKF', 'CYYZ', 'CYHM', 'CYXU', 'KCXO', 'KIAH']; 
+  const REFRESH_MINUTES = 15;
+
+  // Fallback flight category calculator if API leaves fltCat blank
+  function getFlightCategory(m) {
+    if (m.fltCat) return m.fltCat;
+    const vis = parseFloat(m.visib) || 10;
+    let ceil = 99999;
+    if (Array.isArray(m.clouds)) {
+      for (const c of m.clouds) {
+        if ((c.cover === 'BKN' || c.cover === 'OVC' || c.cover === 'VV') && c.base < ceil) {
+          ceil = c.base;
+        }
+      }
+    }
+    if (ceil < 500 || vis < 1) return 'LIFR';
+    if (ceil < 1000 || vis < 3) return 'IFR';
+    if (ceil <= 3000 || vis <= 5) return 'MVFR';
+    return 'VFR';
+  }
+
+  async function fetchMetars() {
+    const apiUrl = `https://aviationweather.gov{STATIONS.join(',')}&format=json`;
+    const proxyUrl = `https://corsproxy.io{encodeURIComponent(apiUrl)}`;
+
+    try {
+      const response = await fetch(proxyUrl);
+      const data = await response.json();
+      
+      if (!data || data.length === 0) throw new Error('No data');
+
+      data.sort((a, b) => STATIONS.indexOf(a.icaoId) - STATIONS.indexOf(b.icaoId));
+
+      const itemsHtml = data.map(m => {
+        const cat = getFlightCategory(m);
+        return `<div class="item"><span class="flt-cat ${cat}">${cat}</span><span>${m.rawOb}</span></div>`;
+      }).join('');
+
+      document.getElementById('ticker').innerHTML = itemsHtml + itemsHtml;
+    } catch (err) {
+      document.getElementById('ticker').innerHTML = 
+        `<div class="item">Unable to load METARs. Retrying automatically...</div>`;
+    }
+  }
+
+  fetchMetars();
+  setInterval(fetchMetars, REFRESH_MINUTES * 60 * 1000);
+</script>
+</body>
+</html>
