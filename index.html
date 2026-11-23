@@ -58,7 +58,7 @@
 
 <div class="ticker-wrap">
   <div class="ticker" id="ticker">
-    <div class="item">Fetching METARs for CYKF, CYYZ, CYHM, CYXU, KCXO, KIAH...</div>
+    <div class="item">Loading live METARs...</div>
   </div>
 </div>
 
@@ -69,16 +69,15 @@
 
   async function fetchMetars() {
     try {
-      const res = await fetch(`https://checkwx.com{STATIONS.join(',')}/decoded`, {
-        headers: { 'X-API-Key': API_KEY }
-      });
+      const url = `https://checkwx.com{STATIONS.join(',')}/decoded?x-api-key=${API_KEY}`;
+      const res = await fetch(url);
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
 
       if (!json.data || json.data.length === 0) throw new Error('No METAR data returned');
 
-      // Keep your exact requested order
+      // Keep exact requested order
       json.data.sort((a, b) => STATIONS.indexOf(a.icao) - STATIONS.indexOf(b.icao));
 
       const itemsHtml = json.data.map(m => {
