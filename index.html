@@ -63,85 +63,34 @@
 </div>
 
 <script>
+  const API_KEY = '60e3c65da3574a52857b0d025a66fe17';
   const STATIONS = ['CYKF', 'CYYZ', 'CYHM', 'CYXU', 'KCXO', 'KIAH']; 
   const REFRESH_MINUTES = 15;
 
-  // Parse flight category directly from raw METAR string
-  function getCategoryFromRaw(raw) {
-    // 1. Parse Ceiling (lowest BKN, OVC, or VV layer in hundreds of feet)
-    let ceil = 99999;
-    const cloudMatches = raw.match(/\b(BKN|OVC|VV)(\d{3})\b/g);
-    if (cloudMatches) {
-      for (const layer of cloudMatches) {
-        const height = parseInt(layer.replace(/^(BKN|OVC|VV)/, ''), 10) * 100;
-        if (height < ceil) ceil = height;
-      }
-    }
-
-    // 2. Parse Visibility (handles SM fractions like 1/2SM, 1 1/2SM, P6SM, or meters like 9999)
-    let vis = 10;
-    const smMatch = raw.match(/\b(P)?(\d+\s+)?(\d+\/\d+|\d+)SM\b/);
-    if (smMatch) {
-      if (smMatch[1] === 'P') {
-        vis = 10;
-      } else {
-        const whole = smMatch[2] ? parseInt(smMatch[2].trim(), 10) : 0;
-        const part = smMatch[3].includes('/') 
-          ? smMatch[3].split('/').reduce((n, d) => n / d) 
-          : parseFloat(smMatch[3]);
-        vis = whole + part;
-      }
-    } else if (/\b9999\b/.test(raw) || /\bCAVOK\b/.test(raw)) {
-      vis = 10;
-    } else {
-      const mMatch = raw.match(/\s(\d{4})\s/);
-      if (mMatch) vis = parseInt(mMatch[1], 10) / 1609.34;
-    }
-
-    if (ceil < 500 || vis < 1) return 'LIFR';
-    if (ceil < 1000 || vis < 3) return 'IFR';
-    if (ceil <= 3000 || vis <= 5) return 'MVFR';
-    return 'VFR';
-  }
-
   async function fetchMetars() {
-    let lines = [];
-
-    // Primary: VATSIM METAR feed (native CORS enabled, real-world NOAA data)
     try {
-      const res = await fetch(`https://vatsim.net{STATIONS.join(',')}`);
-      if (!res.ok) throw new Error('Primary failed');
-      const text = await res.text();
-      lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
-    } catch (e) {
-      // Fallback: AviationWeather.gov via AllOrigins proxy
-      try {
-        const awUrl = `https://aviationweather.gov{STATIONS.join(',')}&format=raw`;
-        const res = await fetch(`https://allorigins.win{encodeURIComponent(awUrl)}`);
-        const text = await res.text();
-        lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
-      } catch (err) {
-        document.getElementById('ticker').innerHTML = 
-          `<div class="item">Unable to load METARs. Retrying automatically...</div>`;
-        return;
-      }
+      const res = await fetch(`https://checkwx.com{STATIONS.join(',')}/decoded`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+
+      if (!json.data || json.data.length === 0) throw new Error('No METAR data returned');
+
+      // Keep your exact requested order
+      json.data.sort((a, b) => STATIONS.indexOf(a.icao) - STATIONS.indexOf(b.icao));
+
+      const itemsHtml = json.data.map(m => {
+        const cat = m.flight_category || 'VFR';
+        return `<div class="item"><span class="flt-cat ${cat}">${cat}</span><span>${m.raw_text}</span></div>`;
+      }).join('');
+
+      document.getElementById('ticker').innerHTML = itemsHtml + itemsHtml;
+    } catch (err) {
+      document.getElementById('ticker').innerHTML = 
+        `<div class="item">Error loading METARs: ${err.message}</div>`;
     }
-
-    if (!lines.length) return;
-
-    // Sort strictly in your requested station order
-    lines.sort((a, b) => {
-      const idA = STATIONS.findIndex(s => a.startsWith(s) || a.includes(' ' + s + ' '));
-      const idB = STATIONS.findIndex(s => b.startsWith(s) || b.includes(' ' + s + ' '));
-      return (idA === -1 ? 99 : idA) - (idB === -1 ? 99 : idB);
-    });
-
-    const itemsHtml = lines.map(raw => {
-      const cat = getCategoryFromRaw(raw);
-      return `<div class="item"><span class="flt-cat ${cat}">${cat}</span><span>${raw}</span></div>`;
-    }).join('');
-
-    document.getElementById('ticker').innerHTML = itemsHtml + itemsHtml;
   }
 
   fetchMetars();
